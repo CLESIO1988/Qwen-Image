@@ -1,0 +1,9 @@
+name: qwen-image-edit
+runtime:
+  container:
+    image: runpod/pytorch:2.3.0-gpu-12.1
+handler: handler.handler
+runtimeTimeout: 600
+env:
+  TRANSFORMERS_CACHE: /tmp/cache
+  HF_HOME: /tmp/cache
