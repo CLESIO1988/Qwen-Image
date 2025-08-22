@@ -1,11 +1,12 @@
-print("✅ handler.py loaded successfully")
-
+import runpod
 import os
 import io
 import base64
 from PIL import Image
 import torch
 from diffusers import QwenImageEditPipeline
+
+print("✅ handler.py loaded successfully")
 
 # Global model cache
 pipe = None
@@ -25,12 +26,13 @@ def load_model():
 
 def handler(event):
     try:
-        # Parse input
-        image_data = event.get("image")
-        prompt = event.get("prompt", "")
-        negative_prompt = event.get("negative_prompt", " ")
-        steps = event.get("steps", 50)
-        seed = event.get("seed", 0)
+        # RunPod expects input under the "input" key
+        job_input = event["input"]
+        image_data = job_input.get("image")
+        prompt = job_input.get("prompt", "")
+        negative_prompt = job_input.get("negative_prompt", " ")
+        steps = job_input.get("steps", 50)
+        seed = job_input.get("seed", 0)
 
         if not image_data or not prompt:
             return {"error": "Missing image or prompt"}
@@ -65,3 +67,6 @@ def handler(event):
     except Exception as e:
         print(f"Error: {str(e)}")
         return {"error": str(e)}
+
+# This line is required for RunPod serverless workers
+runpod.serverless.start({"handler": handler})
