@@ -1,3 +1,5 @@
+print("✅ handler.py loaded successfully")
+
 import os
 import io
 import base64
