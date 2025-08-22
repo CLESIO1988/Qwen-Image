@@ -5,6 +5,10 @@ RUN apt-get update && apt-get install -y \
     git wget curl python3 python3-pip \
  && rm -rf /var/lib/apt/lists/*
 
+# Add this line to set the HF token as a build-time argument
+ARG HF_AUTH_TOKEN
+ENV HUGGING_FACE_HUB_TOKEN=${HF_AUTH_TOKEN}
+
 # Default python
 RUN update-alternatives --install /usr/bin/python python /usr/bin/python3 1
 
@@ -14,8 +18,6 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Install RunPod serverless SDK
-RUN pip install runpod
 
 # Copy project code
 COPY . .
