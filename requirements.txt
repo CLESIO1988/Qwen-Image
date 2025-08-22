@@ -20,7 +20,7 @@ uvicorn==0.29.0
 runpod==1.6.2
 
 # HuggingFace hub (to auto-download model weights)
-huggingface-hub==0.23.0
+huggingface-hub>=0.34.0
 safetensors==0.4.3
 
 # Optional but useful
