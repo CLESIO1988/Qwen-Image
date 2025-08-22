@@ -1,8 +1,11 @@
 # Core ML stack
 torch==2.1.2
 torchvision==0.16.2
-transformers==4.40.1
+transformers>=4.51.3
 accelerate==0.27.2
+
+# For Qwen-Image-Edit (CRITICAL: Install latest diffusers from git)
+git+https://github.com/huggingface/diffusers
 
 # Image & data handling
 Pillow==10.3.0
@@ -12,6 +15,9 @@ requests==2.32.2
 # For model serving / API
 fastapi==0.110.0
 uvicorn==0.29.0
+
+# RunPod SDK
+runpod==1.6.2
 
 # HuggingFace hub (to auto-download model weights)
 huggingface-hub==0.23.0
