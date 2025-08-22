@@ -1,0 +1,21 @@
+# Core ML stack
+torch==2.1.2
+torchvision==0.16.2
+transformers==4.40.1
+accelerate==0.27.2
+
+# Image & data handling
+Pillow==10.3.0
+numpy==1.26.4
+requests==2.32.2
+
+# For model serving / API
+fastapi==0.110.0
+uvicorn==0.29.0
+
+# HuggingFace hub (to auto-download model weights)
+huggingface-hub==0.23.0
+safetensors==0.4.3
+
+# Optional but useful
+tqdm==4.66.2
