@@ -1,5 +1,5 @@
-# Use the exact same base image from your pod.yaml that was working
-FROM runpod/pytorch:2.3.0-gpu-12.1
+# Use standard PyTorch image which is guaranteed to exist
+FROM pytorch/pytorch:2.3.0-cuda12.1-cudnn8-runtime
 
 # Set environment variables
 ENV DEBIAN_FRONTEND=noninteractive
@@ -29,12 +29,16 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY handler.py .
 COPY inference.py .
 
-# Verify installations
+# Verify installations work
 RUN python -c "import runpod; print('✅ runpod imported')"
-RUN python -c "import torch; print('✅ torch imported')"
-RUN python -c "import diffusers; print('✅ diffusers imported')"
+RUN python -c "import torch; print('✅ torch imported:', torch.__version__)"
+RUN python -c "import diffusers; print('✅ diffusers imported:', diffusers.__version__)"
 RUN python -c "from diffusers import QwenImageEditPipeline; print('✅ QwenImageEditPipeline available')"
 
+# Test CUDA availability
+RUN python -c "import torch; print('CUDA available:', torch.cuda.is_available())"
+
+CMD ["python", "handler.py"]
 # Print versions for debugging
 RUN python -c "import torch; print(f'PyTorch version: {torch.__version__}')"
 RUN python -c "import diffusers; print(f'Diffusers version: {diffusers.__version__}')"
