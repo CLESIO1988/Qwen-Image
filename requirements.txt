@@ -2,9 +2,11 @@ runpod
 torch==2.3.0
 torchvision
 Pillow
-diffusers @ git+https://github.com/huggingface/diffusers
+# Use a specific diffusers version that's compatible with PyTorch 2.3.0
+diffusers==0.29.2
 transformers>=4.40.0
 accelerate
 bitsandbytes
 numpy
-xformers
+# Remove xformers for now - it might also have compatibility issues
+# xformers
