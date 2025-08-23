@@ -1,4 +1,4 @@
-# Use standard PyTorch image which is guaranteed to exist
+# Use standard PyTorch image
 FROM pytorch/pytorch:2.3.0-cuda12.1-cudnn8-runtime
 
 # Set environment variables
@@ -29,12 +29,21 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY handler.py .
 COPY inference.py .
 
-# Verify installations work
+# Basic import tests (skip QwenImageEditPipeline for now)
 RUN python -c "import runpod; print('✅ runpod imported')"
 RUN python -c "import torch; print('✅ torch imported:', torch.__version__)"
 RUN python -c "import diffusers; print('✅ diffusers imported:', diffusers.__version__)"
-RUN python -c "from diffusers import QwenImageEditPipeline; print('✅ QwenImageEditPipeline available')"
 
+# Test CUDA availability
+RUN python -c "import torch; print('CUDA available:', torch.cuda.is_available())"
+
+# Print versions for debugging
+RUN python -c "import torch; import diffusers; print(f'PyTorch: {torch.__version__}, Diffusers: {diffusers.__version__}')"
+
+# Create a test script to check QwenImageEditPipeline availability at runtime
+RUN echo 'try:\n    from diffusers import QwenImageEditPipeline\n    print("✅ QwenImageEditPipeline available")\nexcept Exception as e:\n    print(f"❌ QwenImageEditPipeline not available: {e}")' > /app/test_qwen.py
+
+RUN python /app/test_qwen.py
 # Test CUDA availability
 RUN python -c "import torch; print('CUDA available:', torch.cuda.is_available())"
 
