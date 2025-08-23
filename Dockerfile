@@ -15,6 +15,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     wget \
     curl \
+    procps \
     && rm -rf /var/lib/apt/lists/*
 
 # Set working directory
@@ -29,10 +30,37 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY handler.py .
 COPY inference.py .
 
-# Basic import tests (skip QwenImageEditPipeline for now)
+# Create a startup script
+RUN echo '#!/bin/bash\n\
+echo "🚀 Container starting..."\n\
+echo "📍 Working directory: $(pwd)"\n\
+echo "📂 Files in /app:"\n\
+ls -la /app/\n\
+echo "🐍 Python version:"\n\
+python --version\n\
+echo "📦 Python path:"\n\
+python -c "import sys; print(sys.executable)"\n\
+echo "🔍 Checking handler.py:"\n\
+if [ -f "/app/handler.py" ]; then\n\
+    echo "✅ handler.py exists"\n\
+    head -5 /app/handler.py\n\
+else\n\
+    echo "❌ handler.py not found!"\n\
+    exit 1\n\
+fi\n\
+echo "🏃 Starting handler..."\n\
+exec python /app/handler.py' > /app/start.sh
+
+# Make startup script executable
+RUN chmod +x /app/start.sh
+
+# Basic import tests
 RUN python -c "import runpod; print('✅ runpod imported')"
 RUN python -c "import torch; print('✅ torch imported:', torch.__version__)"
 RUN python -c "import diffusers; print('✅ diffusers imported:', diffusers.__version__)"
+
+# Test handler import
+RUN python -c "import handler; print('✅ handler.py imports successfully')"
 
 # Test CUDA availability
 RUN python -c "import torch; print('CUDA available:', torch.cuda.is_available())"
@@ -40,19 +68,5 @@ RUN python -c "import torch; print('CUDA available:', torch.cuda.is_available())
 # Print versions for debugging
 RUN python -c "import torch; import diffusers; print(f'PyTorch: {torch.__version__}, Diffusers: {diffusers.__version__}')"
 
-# Create a test script to check QwenImageEditPipeline availability at runtime
-RUN echo 'try:\n    from diffusers import QwenImageEditPipeline\n    print("✅ QwenImageEditPipeline available")\nexcept Exception as e:\n    print(f"❌ QwenImageEditPipeline not available: {e}")' > /app/test_qwen.py
-
-RUN python /app/test_qwen.py
-# Test CUDA availability
-RUN python -c "import torch; print('CUDA available:', torch.cuda.is_available())"
-
-CMD ["python", "handler.py"]
-# Print versions for debugging
-RUN python -c "import torch; print(f'PyTorch version: {torch.__version__}')"
-RUN python -c "import diffusers; print(f'Diffusers version: {diffusers.__version__}')"
-
-CMD ["python", "handler.py"]RUN python -c "import runpod; import torch; import diffusers; print('All imports successful')"
-
-# The container will be started by RunPod
-# No CMD needed — RunPod uses its own entrypoint
+# Use the startup script
+CMD ["/app/start.sh"]
