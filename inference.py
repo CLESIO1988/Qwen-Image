@@ -1,20 +1,25 @@
 import os
 import uuid
 import torch
-from diffusers import QwenImageEditPipeline
 from PIL import Image
-import requests
-from io import BytesIO
 import base64
+from io import BytesIO
 import traceback
 
-print("🚀 Loading Qwen Image Edit model...")
+print("🚀 Loading image editing model...")
 
-# Load model globally (saves GPU warmup time)
+# Device setup
 device = "cuda" if torch.cuda.is_available() else "cpu"
 print(f"📱 Using device: {device}")
 
+# Try to import QwenImageEditPipeline with fallback
+pipeline = None
+pipeline_type = None
+
 try:
+    from diffusers import QwenImageEditPipeline
+    print("✅ QwenImageEditPipeline found, attempting to load...")
+    
     pipeline = QwenImageEditPipeline.from_pretrained(
         "Qwen/Qwen-Image-Edit",
         torch_dtype=torch.bfloat16,
@@ -22,55 +27,52 @@ try:
         cache_dir="/tmp/cache"
     )
     pipeline.to(device)
-    pipeline.set_progress_bar_config(disable=True)  # Disable progress bar for cleaner logs
-    print("✅ Model loaded successfully")
+    pipeline.set_progress_bar_config(disable=True)
+    pipeline_type = "qwen"
+    print("✅ QwenImageEditPipeline loaded successfully")
+    
 except Exception as e:
-    print(f"❌ Error loading model: {str(e)}")
-    print(traceback.format_exc())
-    raise e
-
-def edit_image_from_url(image_url: str, prompt: str, **kwargs) -> str:
-    """
-    Edit image from URL using Qwen-Image-Edit pipeline
+    print(f"❌ Failed to load QwenImageEditPipeline: {str(e)}")
+    print("🔄 Attempting fallback to StableDiffusionInstructPix2PixPipeline...")
     
-    Args:
-        image_url: URL of the image to edit
-        prompt: Text description of the desired edit
-        **kwargs: Additional parameters for the pipeline
-    
-    Returns:
-        str: Path to the saved edited image
-    """
     try:
-        print(f"🌐 Downloading image from: {image_url}")
-        # Download the image
-        response = requests.get(image_url, timeout=30)
-        response.raise_for_status()
-        img = Image.open(BytesIO(response.content)).convert("RGB")
-        print(f"📐 Image loaded: {img.size}")
+        from diffusers import StableDiffusionInstructPix2PixPipeline
+        pipeline = StableDiffusionInstructPix2PixPipeline.from_pretrained(
+            "timbrooks/instruct-pix2pix",
+            torch_dtype=torch.float16,
+            use_safetensors=True,
+            cache_dir="/tmp/cache"
+        )
+        pipeline.to(device)
+        pipeline.set_progress_bar_config(disable=True)
+        pipeline_type = "instructpix2pix"
+        print("✅ StableDiffusionInstructPix2PixPipeline loaded as fallback")
         
-        return edit_image_from_pil(img, prompt, **kwargs)
+    except Exception as e2:
+        print(f"❌ Failed to load fallback pipeline: {str(e2)}")
+        print("🔄 Attempting final fallback to StableDiffusionImg2ImgPipeline...")
         
-    except Exception as e:
-        print(f"❌ Error in edit_image_from_url: {str(e)}")
-        print(traceback.format_exc())
-        raise e
+        try:
+            from diffusers import StableDiffusionImg2ImgPipeline
+            pipeline = StableDiffusionImg2ImgPipeline.from_pretrained(
+                "runwayml/stable-diffusion-v1-5",
+                torch_dtype=torch.float16,
+                use_safetensors=True,
+                cache_dir="/tmp/cache"
+            )
+            pipeline.to(device)
+            pipeline.set_progress_bar_config(disable=True)
+            pipeline_type = "img2img"
+            print("✅ StableDiffusionImg2ImgPipeline loaded as final fallback")
+            
+        except Exception as e3:
+            print(f"❌ All pipelines failed to load: {str(e3)}")
+            raise RuntimeError("No compatible image editing pipeline could be loaded")
 
 def edit_image_from_base64(image_b64: str, prompt: str, **kwargs) -> str:
-    """
-    Edit image from base64 string using Qwen-Image-Edit pipeline
-    
-    Args:
-        image_b64: Base64 encoded image
-        prompt: Text description of the desired edit
-        **kwargs: Additional parameters for the pipeline
-    
-    Returns:
-        str: Path to the saved edited image
-    """
+    """Edit image from base64 string using available pipeline"""
     try:
         print(f"🔤 Decoding base64 image...")
-        # Decode base64 image
         image_bytes = base64.b64decode(image_b64)
         img = Image.open(BytesIO(image_bytes)).convert("RGB")
         print(f"📐 Image loaded: {img.size}")
@@ -83,40 +85,51 @@ def edit_image_from_base64(image_b64: str, prompt: str, **kwargs) -> str:
         raise e
 
 def edit_image_from_pil(img: Image.Image, prompt: str, **kwargs) -> str:
-    """
-    Edit PIL Image using Qwen-Image-Edit pipeline
-    
-    Args:
-        img: PIL Image object
-        prompt: Text description of the desired edit
-        **kwargs: Additional parameters for the pipeline
-    
-    Returns:
-        str: Path to the saved edited image
-    """
+    """Edit PIL Image using available pipeline"""
     try:
-        # Default parameters (can be overridden by kwargs)
-        default_params = {
-            "image": img,
-            "prompt": prompt,
-            "generator": torch.manual_seed(kwargs.get("seed", 0)),
-            "true_cfg_scale": kwargs.get("true_cfg_scale", 4.0),
-            "negative_prompt": kwargs.get("negative_prompt", ""),
-            "num_inference_steps": kwargs.get("num_inference_steps", 50),
-        }
+        # Parameters based on pipeline type
+        if pipeline_type == "qwen":
+            params = {
+                "image": img,
+                "prompt": prompt,
+                "generator": torch.manual_seed(kwargs.get("seed", 0)),
+                "true_cfg_scale": kwargs.get("true_cfg_scale", 4.0),
+                "negative_prompt": kwargs.get("negative_prompt", ""),
+                "num_inference_steps": kwargs.get("num_inference_steps", 50),
+            }
+        elif pipeline_type == "instructpix2pix":
+            params = {
+                "image": img,
+                "prompt": prompt,
+                "generator": torch.manual_seed(kwargs.get("seed", 0)),
+                "guidance_scale": kwargs.get("true_cfg_scale", 7.5),
+                "image_guidance_scale": kwargs.get("image_guidance_scale", 1.5),
+                "negative_prompt": kwargs.get("negative_prompt", ""),
+                "num_inference_steps": kwargs.get("num_inference_steps", 50),
+            }
+        elif pipeline_type == "img2img":
+            params = {
+                "image": img,
+                "prompt": prompt,
+                "generator": torch.manual_seed(kwargs.get("seed", 0)),
+                "guidance_scale": kwargs.get("true_cfg_scale", 7.5),
+                "negative_prompt": kwargs.get("negative_prompt", ""),
+                "num_inference_steps": kwargs.get("num_inference_steps", 50),
+                "strength": kwargs.get("strength", 0.8),
+            }
+        else:
+            raise RuntimeError("No pipeline available")
         
-        # Update with any additional kwargs
-        inputs = {**default_params, **kwargs}
         # Remove non-pipeline parameters
-        inputs.pop("seed", None)
-        inputs.pop("return_base64", None)  # Custom parameter for output format
+        params.pop("seed", None)
         
-        print(f"🎨 Editing image with prompt: '{prompt}'")
-        print(f"⚙️  Parameters: cfg_scale={inputs['true_cfg_scale']}, steps={inputs['num_inference_steps']}")
+        print(f"🎨 Editing image with {pipeline_type} pipeline")
+        print(f"🎯 Prompt: '{prompt}'")
+        print(f"⚙️  Steps: {params.get('num_inference_steps', 'N/A')}")
         
         # Run inference
         with torch.inference_mode():
-            output = pipeline(**inputs)
+            output = pipeline(**params)
         
         # Get the edited image
         edited_img = output.images[0]
@@ -136,39 +149,51 @@ def edit_image_from_pil(img: Image.Image, prompt: str, **kwargs) -> str:
         raise e
 
 def edit_image_return_base64(img: Image.Image, prompt: str, **kwargs) -> str:
-    """
-    Edit PIL Image and return as base64 string
-    
-    Args:
-        img: PIL Image object
-        prompt: Text description of the desired edit
-        **kwargs: Additional parameters for the pipeline
-    
-    Returns:
-        str: Base64 encoded edited image
-    """
+    """Edit PIL Image and return as base64 string"""
     try:
-        # Default parameters (can be overridden by kwargs)
-        default_params = {
-            "image": img,
-            "prompt": prompt,
-            "generator": torch.manual_seed(kwargs.get("seed", 0)),
-            "true_cfg_scale": kwargs.get("true_cfg_scale", 4.0),
-            "negative_prompt": kwargs.get("negative_prompt", ""),
-            "num_inference_steps": kwargs.get("num_inference_steps", 50),
-        }
+        # Use the same parameters as edit_image_from_pil
+        if pipeline_type == "qwen":
+            params = {
+                "image": img,
+                "prompt": prompt,
+                "generator": torch.manual_seed(kwargs.get("seed", 0)),
+                "true_cfg_scale": kwargs.get("true_cfg_scale", 4.0),
+                "negative_prompt": kwargs.get("negative_prompt", ""),
+                "num_inference_steps": kwargs.get("num_inference_steps", 50),
+            }
+        elif pipeline_type == "instructpix2pix":
+            params = {
+                "image": img,
+                "prompt": prompt,
+                "generator": torch.manual_seed(kwargs.get("seed", 0)),
+                "guidance_scale": kwargs.get("true_cfg_scale", 7.5),
+                "image_guidance_scale": kwargs.get("image_guidance_scale", 1.5),
+                "negative_prompt": kwargs.get("negative_prompt", ""),
+                "num_inference_steps": kwargs.get("num_inference_steps", 50),
+            }
+        elif pipeline_type == "img2img":
+            params = {
+                "image": img,
+                "prompt": prompt,
+                "generator": torch.manual_seed(kwargs.get("seed", 0)),
+                "guidance_scale": kwargs.get("true_cfg_scale", 7.5),
+                "negative_prompt": kwargs.get("negative_prompt", ""),
+                "num_inference_steps": kwargs.get("num_inference_steps", 50),
+                "strength": kwargs.get("strength", 0.8),
+            }
+        else:
+            raise RuntimeError("No pipeline available")
         
-        # Update with any additional kwargs
-        inputs = {**default_params, **kwargs}
         # Remove non-pipeline parameters
-        inputs.pop("seed", None)
+        params.pop("seed", None)
         
-        print(f"🎨 Editing image with prompt: '{prompt}'")
-        print(f"⚙️  Parameters: cfg_scale={inputs['true_cfg_scale']}, steps={inputs['num_inference_steps']}")
+        print(f"🎨 Editing image with {pipeline_type} pipeline")
+        print(f"🎯 Prompt: '{prompt}'")
+        print(f"⚙️  Steps: {params.get('num_inference_steps', 'N/A')}")
         
         # Run inference
         with torch.inference_mode():
-            output = pipeline(**inputs)
+            output = pipeline(**params)
         
         # Get the edited image
         edited_img = output.images[0]
@@ -187,14 +212,23 @@ def edit_image_return_base64(img: Image.Image, prompt: str, **kwargs) -> str:
         print(traceback.format_exc())
         raise e
 
-# For backward compatibility
-def edit_image(image_url: str, prompt: str, **kwargs) -> str:
-    """Legacy function - use edit_image_from_url instead"""
-    return edit_image_from_url(image_url, prompt, **kwargs)
+# Legacy compatibility function
+def edit_image_from_url(image_url: str, prompt: str, **kwargs) -> str:
+    """Edit image from URL - legacy compatibility"""
+    try:
+        import requests
+        print(f"🌐 Downloading image from: {image_url}")
+        response = requests.get(image_url, timeout=30)
+        response.raise_for_status()
+        img = Image.open(BytesIO(response.content)).convert("RGB")
+        return edit_image_from_pil(img, prompt, **kwargs)
+    except Exception as e:
+        print(f"❌ Error downloading image: {str(e)}")
+        raise e
 
 if __name__ == "__main__":
-    # Test the model loading
-    print("🧪 Testing model...")
+    print(f"🧪 Testing {pipeline_type} pipeline...")
     print(f"Device: {device}")
-    print(f"Model dtype: {pipeline.unet.dtype}")
-    print("✅ Model test completed")
+    if pipeline_type == "qwen":
+        print(f"Model dtype: {pipeline.unet.dtype}")
+    print("✅ Pipeline test completed")
